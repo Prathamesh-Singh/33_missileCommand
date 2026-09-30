@@ -6,6 +6,9 @@ GROUND_Y = HEIGHT - 40
 INTERCEPTOR_SPEED, EXPLOSION_MAX, EXPLOSION_TIME = 420, 45, 1.2
 AMMO_PER_BATTERY = 10
 
+shake_timer = 0.0
+city_lost_message_timer = 0.0
+
 
 def explosion_color(progress):
     """Return an (r, g, b) colour for an explosion (progress 0..1 of its life), or None for the default."""
@@ -13,28 +16,28 @@ def explosion_color(progress):
 
     if progress < 0.5:
         t = progress / 0.5
-
         r = 255
-        g = int(180 + (255 - 180) * t)
-        b = int(40 + (255 - 40) * t)
+        g = 180 + (255 - 180) * t
+        b = 40 + (255 - 40) * t
     else:
         t = (progress - 0.5) / 0.5
-
-        r = int(255 - (255 - 140) * t)
-        g = int(255 - 255 * t)
-        b = int(255 - 255 * t)
+        r = 255 - (255 - 140) * t
+        g = 255 - 255 * t
+        b = 255 - 255 * t
 
     return (
         max(0, min(255, int(r))),
         max(0, min(255, int(g))),
         max(0, min(255, int(b))),
     )
-    
 
 
 def on_city_destroyed(city):
     """Called when a city is hit; add screen shake, sounds, or a game-over warning here."""
-    pass
+    global shake_timer, city_lost_message_timer
+
+    shake_timer = 0.35
+    city_lost_message_timer = 1.5
 
 
 def city_repair_threshold():
@@ -107,6 +110,11 @@ class Game:
         self.reset()
 
     def reset(self):
+        global shake_timer, city_lost_message_timer
+
+        shake_timer = 0.0
+        city_lost_message_timer = 0.0
+
         self.batteries = [Battery(60), Battery(WIDTH / 2), Battery(WIDTH - 60)]
         xs = [150, 230, 310, 490, 570, 650]
         self.cities = [City(x) for x in xs]
@@ -123,8 +131,8 @@ class Game:
 
     def nearest_battery(self, target):
         available = [
-        b for b in self.batteries
-        if b.alive and b.ammo > 0
+            b for b in self.batteries
+            if b.alive and b.ammo > 0
         ]
 
         if not available:
@@ -133,7 +141,7 @@ class Game:
         return min(
             available,
             key=lambda b: b.pos.distance_squared_to(target)
-        )   
+        )
 
     def launch(self, target):
         target = pygame.Vector2(target)
@@ -147,9 +155,7 @@ class Game:
             return
 
         battery.ammo -= 1
-        self.interceptors.append(
-        Interceptor(battery.pos, target)
-        )
+        self.interceptors.append(Interceptor(battery.pos, target))
 
     def spawn_missile(self):
         targets = [c for c in self.cities if c.alive] + [b for b in self.batteries if b.alive]
@@ -157,19 +163,20 @@ class Game:
             self.missiles.append(Missile(random.choice(targets), 45 + self.wave * 6))
 
     def update(self, dt):
+        global shake_timer, city_lost_message_timer
+
+        shake_timer = max(0.0, shake_timer - dt)
+        city_lost_message_timer = max(0.0, city_lost_message_timer - dt)
+
         if self.state != "play":
             return
         threshold = city_repair_threshold()
         if threshold and self.score // threshold > self.repairs_awarded:
-    
-            new_repairs = self.score // threshold - self.repairs_awarded
             self.repairs_awarded = self.score // threshold
             for city in self.cities:
-                if new_repairs == 0:
-                    break
                 if not city.alive:
                     city.alive = True
-                    new_repairs -= 1
+                    break
         self.spawn_timer -= dt
         if self.to_spawn > 0 and self.spawn_timer <= 0:
             self.spawn_missile()
@@ -236,6 +243,28 @@ class Game:
         if self.state == "lose":
             label = self.font.render("ALL CITIES LOST - Press R", True, (255, 255, 120))
             screen.blit(label, label.get_rect(center=(WIDTH // 2, HEIGHT // 2)))
+
+        
+        if shake_timer > 0:
+            dx = random.randint(-6, 6)
+            dy = random.randint(-6, 6)
+            screen.scroll(dx, dy)
+
+            # Clear exposed edges caused by scrolling.
+            if dx > 0:
+                screen.fill((5, 5, 25), (0, 0, dx, HEIGHT))
+            elif dx < 0:
+                screen.fill((5, 5, 25), (WIDTH + dx, 0, -dx, HEIGHT))
+
+            if dy > 0:
+                screen.fill((5, 5, 25), (0, 0, WIDTH, dy))
+            elif dy < 0:
+                screen.fill((5, 5, 25), (0, HEIGHT + dy, WIDTH, -dy))
+
+        # Keep warning text readable instead of shaking it.
+        if city_lost_message_timer > 0:
+            warning = self.font.render("WARNING: CITY LOST", True, (255, 80, 80))
+            screen.blit(warning, warning.get_rect(center=(WIDTH // 2, 60)))
 
 
 def main():
