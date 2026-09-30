@@ -9,7 +9,27 @@ AMMO_PER_BATTERY = 10
 
 def explosion_color(progress):
     """Return an (r, g, b) colour for an explosion (progress 0..1 of its life), or None for the default."""
-    pass
+    progress = max(0.0, min(1.0, progress))
+
+    if progress < 0.5:
+        t = progress / 0.5
+
+        r = 255
+        g = int(180 + (255 - 180) * t)
+        b = int(40 + (255 - 40) * t)
+    else:
+        t = (progress - 0.5) / 0.5
+
+        r = int(255 - (255 - 140) * t)
+        g = int(255 - 255 * t)
+        b = int(255 - 255 * t)
+
+    return (
+        max(0, min(255, int(r))),
+        max(0, min(255, int(g))),
+        max(0, min(255, int(b))),
+    )
+    
 
 
 def on_city_destroyed(city):
@@ -19,7 +39,7 @@ def on_city_destroyed(city):
 
 def city_repair_threshold():
     """Return a score value at which a destroyed city is rebuilt, or None to disable city repair."""
-    pass
+    return 2000
 
 
 class Battery:
@@ -141,11 +161,15 @@ class Game:
             return
         threshold = city_repair_threshold()
         if threshold and self.score // threshold > self.repairs_awarded:
+    
+            new_repairs = self.score // threshold - self.repairs_awarded
             self.repairs_awarded = self.score // threshold
             for city in self.cities:
+                if new_repairs == 0:
+                    break
                 if not city.alive:
                     city.alive = True
-                    break
+                    new_repairs -= 1
         self.spawn_timer -= dt
         if self.to_spawn > 0 and self.spawn_timer <= 0:
             self.spawn_missile()
